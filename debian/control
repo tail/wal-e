@@ -1,0 +1,13 @@
+Source: wal-e
+Section: python
+Priority: extra
+Maintainer: Jason Yan <tailofthesun@gmail.com>
+Build-Depends: debhelper (>= 9), python, dh-virtualenv
+Standards-Version: 3.9.5
+
+Package: wal-e
+Architecture: all
+Depends: ${python:Depends}, ${misc:Depends}, lzop, pv
+Description: WAL-E PostgreSQL Disaster Recovery
+ WAL-E is a program designed to perform continuous archiving of PostgreSQL
+ WAL files and manage the use of pg_start_backup and pg_stop_backup.
