@@ -1,3 +1,9 @@
+wal-e (0.7.0) precise; urgency=low
+
+  * Updated to 0.7.0.
+
+ -- Jason Yan <tailofthesun@gmail.com>  Wed, 02 Apr 2014 21:46:19 +0000
+
 wal-e (0.7a1-1) unstable; urgency=low
 
   * Initial release.
