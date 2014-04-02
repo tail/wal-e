@@ -6,7 +6,7 @@ Build-Depends: debhelper (>= 9), python, dh-virtualenv
 Standards-Version: 3.9.5
 
 Package: wal-e
-Architecture: all
+Architecture: any
 Depends: ${python:Depends}, ${misc:Depends}, lzop, pv
 Description: WAL-E PostgreSQL Disaster Recovery
  WAL-E is a program designed to perform continuous archiving of PostgreSQL
