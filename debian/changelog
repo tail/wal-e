@@ -1,3 +1,9 @@
+wal-e (0.8b2) precise; urgency=low
+
+  * Updated to v0.8b2.
+
+ -- jason <tailofthesun@gmail.com>  Thu, 09 Oct 2014 14:50:49 -0700
+
 wal-e (0.7.0) precise; urgency=low
 
   * Updated to 0.7.0.
