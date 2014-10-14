@@ -19,5 +19,3 @@ class S3Backup(Backup):
         url_tup = urlparse(layout.prefix)
         bucket_name = url_tup.netloc
         self.cinfo = s3.calling_format.from_store_name(bucket_name)
-        from wal_e.worker.s3 import s3_worker
-        self.worker = s3_worker

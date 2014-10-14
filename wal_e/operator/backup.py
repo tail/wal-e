@@ -5,6 +5,9 @@ import functools
 import gevent
 import gevent.pool
 import itertools
+import multiprocessing
+import signal
+import Queue
 
 from cStringIO import StringIO
 from wal_e import log_help
@@ -31,6 +34,15 @@ FILE_STRUCTURE_VERSION = storage.CURRENT_VERSION
 logger = log_help.WalELogger(__name__)
 
 
+def fetch_partition(job_queue, backup_obj, fetcher):
+    while not job_queue.empty():
+        try:
+            part_name = job_queue.get(block=False)
+            backup_obj._exception_gather_guard(fetcher.fetch_partition)(part_name)
+        except Queue.Empty:
+            pass
+
+
 class Backup(object):
 
     def __init__(self, layout, creds, gpg_key_id):
@@ -41,6 +53,11 @@ class Backup(object):
 
     def new_connection(self):
         return self.cinfo.connect(self.creds)
+
+    def get_worker(self):
+        # TODO: actually support all workers instead of hard-coding S3.
+        from wal_e.worker.s3 import s3_worker
+        return s3_worker
 
     def backup_list(self, query, detail):
         """
@@ -127,31 +144,39 @@ class Backup(object):
         if not blind_restore:
             self._verify_restore_paths(backup_info.spec)
 
-        connections = []
-        for i in xrange(pool_size):
-            connections.append(self.new_connection())
+        job_queue = multiprocessing.Queue()
+        connection = self.new_connection()
+        workers = []
 
-        partition_iter = self.worker.TarPartitionLister(
-            connections[0], self.layout, backup_info)
+        partition_iter = self.get_worker().TarPartitionLister(
+            connection, self.layout, backup_info)
 
-        assert len(connections) == pool_size
-        fetchers = []
-        for i in xrange(pool_size):
-            fetchers.append(self.worker.BackupFetcher(
-                connections[i], self.layout, backup_info,
-                backup_info.spec['base_prefix'],
-                (self.gpg_key_id is not None)))
-        assert len(fetchers) == pool_size
+        fetcher = self.get_worker().BackupFetcher(
+            connection,
+            self.layout,
+            backup_info,
+            backup_info.spec['base_prefix'],
+            (self.gpg_key_id is not None)
+        )
 
-        p = gevent.pool.Pool(size=pool_size)
-        fetcher_cycle = itertools.cycle(fetchers)
         for part_name in partition_iter:
-            p.spawn(
-                self._exception_gather_guard(
-                    fetcher_cycle.next().fetch_partition),
-                part_name)
+            job_queue.put(part_name)
 
-        p.join(raise_error=True)
+        # Initialize workers for multiprocessing "pool".
+        for i in xrange(pool_size):
+
+            proc = multiprocessing.Process(target=fetch_partition, args=(job_queue, self, fetcher))
+            proc.start()
+            workers.append(proc)
+
+        try:
+            for worker in workers:
+                worker.join()
+        except KeyboardInterrupt:
+            logger.warning('Program interrupted, terminating workers...')
+            for worker in workers:
+                worker.terminate()
+                worker.join()
 
     def database_backup(self, data_directory, *args, **kwargs):
         """Uploads a PostgreSQL file cluster to S3 or Windows Azure Blob
@@ -390,22 +415,22 @@ class Backup(object):
 
     def delete_all(self, dry_run):
         conn = self.new_connection()
-        delete_cxt = self.worker.DeleteFromContext(conn, self.layout, dry_run)
+        delete_cxt = self.get_worker().DeleteFromContext(conn, self.layout, dry_run)
         delete_cxt.delete_everything()
 
     def delete_before(self, dry_run, segment_info):
         conn = self.new_connection()
-        delete_cxt = self.worker.DeleteFromContext(conn, self.layout, dry_run)
+        delete_cxt = self.get_worker().DeleteFromContext(conn, self.layout, dry_run)
         delete_cxt.delete_before(segment_info)
 
     def delete_with_retention(self, dry_run, num_to_retain):
         conn = self.new_connection()
-        delete_cxt = self.worker.DeleteFromContext(conn, self.layout, dry_run)
+        delete_cxt = self.get_worker().DeleteFromContext(conn, self.layout, dry_run)
         delete_cxt.delete_with_retention(num_to_retain)
 
     def _backup_list(self, detail):
         conn = self.new_connection()
-        bl = self.worker.BackupList(conn, self.layout, detail)
+        bl = self.get_worker().BackupList(conn, self.layout, detail)
         return bl
 
     def _upload_pg_cluster_dir(self, start_backup_info, pg_cluster_dir,
@@ -494,6 +519,7 @@ class Backup(object):
         occuring in another thread of execution that may not end up at
         the catch-all try/except in main().
         """
+        # TODO: this doesn't work with multiprocessing.
 
         @functools.wraps(fn)
         def wrapper(*args, **kwargs):

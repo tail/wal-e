@@ -16,7 +16,7 @@ def gevent_monkey(*args, **kwargs):
 
 # Monkey-patch procedures early.  If it doesn't work with gevent,
 # sadly it cannot be used (easily) in WAL-E.
-gevent_monkey()
+# gevent_monkey()
 
 # Instate a cipher suite that bans a series of weak and slow ciphers.
 # Both RC4 (weak) 3DES (slow) have been seen in use.
